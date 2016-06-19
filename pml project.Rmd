@@ -1,0 +1,101 @@
+---
+title: "Practical Machine Learning Project"
+date: "June 19, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Prep work, libs and fetching
+
+```{r, warning=FALSE}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+
+setwd("~/Desktop/Coursera/pml")
+trainUrl <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+trainFile <- "./data/pml-training.csv"
+testFile  <- "./data/pml-testing.csv"
+if (!file.exists("./data")) {
+  dir.create("./data")
+}
+if (!file.exists(trainFile)) {
+  download.file(trainUrl, destfile=trainFile, method="curl")
+}
+if (!file.exists(testFile)) {
+  download.file(testUrl, destfile=testFile, method="curl")
+}
+
+```
+
+## Read and clean up the data as needed
+
+```{r, echo=TRUE}
+trainingraw <- read.csv("./data/pml-training.csv")
+testraw <- read.csv("./data/pml-testing.csv")
+summary(trainingraw)
+
+# Now that we see there are some issues with the data, lets make it tidy & clean.
+
+trainingraw <- trainingraw[, colSums(is.na(trainingraw)) == 0] 
+testraw <- testraw[, colSums(is.na(testraw)) == 0] 
+classe <- trainingraw$classe
+trainRemove <- grepl("^X|timestamp|window", names(trainingraw))
+trainingraw <- trainingraw[, !trainRemove]
+trainCleaned <- trainingraw[, sapply(trainingraw, is.numeric)]
+trainCleaned$classe <- classe
+testRemove <- grepl("^X|timestamp|window", names(testraw))
+testraw <- testraw[, !testRemove]
+testCleaned <- testraw[, sapply(testraw, is.numeric)]
+```
+
+## Take the datasets apart into training / testing.  lets take 75% for training
+
+```{r, echo=TRUE}
+
+set.seed(8675309) # Wonder how may ppl will know the reference here.. lol
+inTrain <- createDataPartition(trainCleaned$classe, p=0.75, list=F)
+mytraindata <- trainCleaned[inTrain, ]
+mytestdata <- trainCleaned[-inTrain, ]
+```
+
+## lets begin to model.  This will take some time to run :)
+
+```{r, echo=TRUE}
+
+controlRf <- trainControl(method="cv", 7)
+modelRf <- train(classe ~ ., data=mytraindata, method="rf", trControl=controlRf, ntree=250)
+modelRf
+
+```
+
+## lets begin to predict
+
+```{r, echo=TRUE}
+
+predictRf <- predict(modelRf, mytestdata)
+confusionMatrix(mytestdata$classe, predictRf)
+myaccuracy <- postResample(predictRf, mytestdata$classe)
+myaccuracy
+myerror <- 1 - as.numeric(confusionMatrix(mytestdata$classe, predictRf)$overall[1])
+myerror
+myresult <- predict(modelRf, testCleaned[, -length(names(testCleaned))])
+myresult
+
+```
+
+## lets explore and view
+
+```{r, echo=TRUE}
+plot(myresult)
+
+mymodel <- rpart(classe ~ ., data=mytraindata, method="class")
+prp(mymodel)
+
+```
